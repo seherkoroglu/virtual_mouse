@@ -12,16 +12,16 @@ ekran_yukseklik = 720
 klavye_tuslar = [
     ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
     ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-    ["Z", "X", "C", "V", "B", "N", "M", "GERİ"],
-    ["BOŞLUK", "KAYDET"]
+    ["Z", "X", "C", "V", "B", "N", "M"],
+    ["SPACE", "SAVE"]
 ]
 
 # Başlangıç metni
 girdi_metin = ""
 
 # Buton boyutları
-buton_genislik = 80
-buton_yukseklik = 80
+buton_genislik = 100
+buton_yukseklik = 100
 opaklik = 0.7
 
 # Mediapipe el takip ayarları
@@ -44,11 +44,11 @@ cap.set(4, ekran_yukseklik)
 # Tıklama zamanı ve aktif tuşu takip için değişkenler
 son_gezinilen_tus = None
 gezinme_baslangic_zamani = None
-gezinme_suresi_esigi = 1  # Saniye cinsinden tıklama süresi
+gezinme_suresi_esigi = 0.5  # Geri alma süresi
 
 def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
     global buton_genislik, buton_yukseklik, opaklik
-    x, y = 50, 100
+    x, y = 100, 200
 
     # Opaklık efekti için maske oluştur
     kaplama = resim.copy()
@@ -60,7 +60,7 @@ def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
     for satir in tuslar:
         for tus in satir:
             # Butonu çiz
-            if tus == "BOŞLUK":
+            if tus == "SPACE":
                 w = buton_genislik * 5  # BOŞLUK tuşu için genişlik
             else:
                 w = buton_genislik
@@ -82,11 +82,11 @@ def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
 
 # Parmağın belirli bir buton üzerinde olup olmadığını kontrol etme
 def buton_gezinme_kontrol(x, y, tuslar):
-    btn_x, btn_y = 50, 100
+    btn_x, btn_y = 100, 200
     for satir in tuslar:
         for tus in satir:
             # Buton genişliğini ayarla
-            w = buton_genislik * 5 if tus == "BOŞLUK" else buton_genislik
+            w = buton_genislik * 5 if tus == "SPACE" else buton_genislik
 
             # Parmağın bu butonun üstünde olup olmadığını kontrol et
             if btn_x <= x <= btn_x + w and btn_y <= y <= btn_y + buton_yukseklik:
@@ -97,6 +97,29 @@ def buton_gezinme_kontrol(x, y, tuslar):
         btn_y += buton_yukseklik + 10
 
     return None
+
+def yumruk_mu(hand_landmarks, resim):
+    if len(hand_landmarks.landmark) > 0:
+        # Parmak uçlarının noktaları
+        index_finger_tip = hand_landmarks.landmark[mp_eller.HandLandmark.INDEX_FINGER_TIP]
+        middle_finger_tip = hand_landmarks.landmark[mp_eller.HandLandmark.MIDDLE_FINGER_TIP]
+        ring_finger_tip = hand_landmarks.landmark[mp_eller.HandLandmark.RING_FINGER_TIP]
+        pinky_finger_tip = hand_landmarks.landmark[mp_eller.HandLandmark.PINKY_TIP]
+        thumb_tip = hand_landmarks.landmark[mp_eller.HandLandmark.THUMB_TIP]
+
+        # Parmağın uçları arasındaki mesafeler
+        mesafe_1 = np.linalg.norm(np.array([index_finger_tip.x, index_finger_tip.y]) -
+                                  np.array([middle_finger_tip.x, middle_finger_tip.y]))
+        mesafe_2 = np.linalg.norm(np.array([middle_finger_tip.x, middle_finger_tip.y]) -
+                                  np.array([ring_finger_tip.x, ring_finger_tip.y]))
+        mesafe_3 = np.linalg.norm(np.array([ring_finger_tip.x, ring_finger_tip.y]) -
+                                  np.array([pinky_finger_tip.x, pinky_finger_tip.y]))
+
+        # Eğer mesafeler çok küçükse, bu bir yumruk olabilir
+        if mesafe_1 < 0.05 and mesafe_2 < 0.05 and mesafe_3 < 0.05:
+            cv2.putText(resim, " ", (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            return True
+    return False
 
 def dosyaya_kaydet(metin):
     # Kaydedilecek dosya adı
@@ -114,62 +137,44 @@ while True:
     sonuc = eller.process(resim_rgb)
     gezinilen_tus = None
     if sonuc.multi_hand_landmarks:
-        hands_detected = []
         for el_isaretleri in sonuc.multi_hand_landmarks:
+            # Yumruk olup olmadığını kontrol et
+            if yumruk_mu(el_isaretleri, kare):
+                girdi_metin = girdi_metin[:-1]  # BACK tuşuna basılmış gibi davran
+                play_click_sound()  # Tıklama sesi çalsın
+                continue  # Yumruk algılandığında bir işlem yapmaya gerek yok
+
             # İşaret parmağı ucunun koordinatlarını al
             parmak_ucu_x = int(el_isaretleri.landmark[mp_eller.HandLandmark.INDEX_FINGER_TIP].x * ekran_genislik)
             parmak_ucu_y = int(el_isaretleri.landmark[mp_eller.HandLandmark.INDEX_FINGER_TIP].y * ekran_yukseklik)
-            hands_detected.append((parmak_ucu_x, parmak_ucu_y))
+            gezinilen_tus = buton_gezinme_kontrol(parmak_ucu_x, parmak_ucu_y, klavye_tuslar)
 
-        if len(hands_detected) > 0:
-            # İlk ele ait parmak ucu koordinatlarını al
-            parmak_ucu_1_x, parmak_ucu_1_y = hands_detected[0]
-
-            # İkinci ele ait parmak ucu koordinatlarını al (eğer varsa)
-            if len(hands_detected) > 1:
-                parmak_ucu_2_x, parmak_ucu_2_y = hands_detected[1]
-
-                # İki parmak arasında hangi buton daha yakınsa onu seç
-                tus_1 = buton_gezinme_kontrol(parmak_ucu_1_x, parmak_ucu_1_y, klavye_tuslar)
-                tus_2 = buton_gezinme_kontrol(parmak_ucu_2_x, parmak_ucu_2_y, klavye_tuslar)
-
-                if tus_1 and tus_2:
-                    # İlk tespit edilen parmak üzerindeki tuşu al
-                    gezinilen_tus = tus_1 if parmak_ucu_1_y < parmak_ucu_2_y else tus_2
-
-            # Sadece bir el varsa
-            elif len(hands_detected) == 1:
-                tus_1 = buton_gezinme_kontrol(parmak_ucu_1_x, parmak_ucu_1_y, klavye_tuslar)
-                if tus_1:
-                    gezinilen_tus = tus_1
+            # İşaret parmağı ucunu yeşil yap
+            cv2.circle(kare, (parmak_ucu_x, parmak_ucu_y), 10, (0, 255, 0), cv2.FILLED)
 
             # Tıklama algılama
             if gezinilen_tus:
                 if gezinilen_tus == son_gezinilen_tus:
-                    # Aynı tuş üzerinde 2 saniyedir duruyorsa
                     if gezinme_baslangic_zamani and (time.time() - gezinme_baslangic_zamani >= gezinme_suresi_esigi):
-                        play_click_sound()  # Play sound when a button is clicked
-                        if gezinilen_tus == "GERİ":
-                            girdi_metin = girdi_metin[:-1]
-                        elif gezinilen_tus == "BOŞLUK":
+                        play_click_sound()
+                        if gezinilen_tus == "SPACE":
                             girdi_metin += " "
-                        elif gezinilen_tus == "KAYDET":
-                            dosyaya_kaydet(girdi_metin)  # Kaydet butonuna tıklandığında metni kaydet
+                        elif gezinilen_tus == "SAVE":
+                            dosyaya_kaydet(girdi_metin)
                         else:
                             girdi_metin += gezinilen_tus
-                        gezinme_baslangic_zamani = None  # Tıklamayı sıfırla
+                        son_gezinilen_tus = None  # Tıklama sonrası gezilen tuş sıfırlanır
+                        gezinme_baslangic_zamani = None  # Gezme süresi sıfırlanır
                 else:
                     son_gezinilen_tus = gezinilen_tus
-                    gezinme_baslangic_zamani = time.time()  # Yeni tuşa geçildiği için zamanı sıfırla
+                    gezinme_baslangic_zamani = time.time()
 
-            # Klavyeyi ekrana çiz
-            klavyeyi_ciz(kare, klavye_tuslar, girdi_metin, gezinilen_tus)
+            mp_ciz.draw_landmarks(kare, el_isaretleri, mp_eller.HAND_CONNECTIONS)
 
-    # Görüntüyü göster
-    cv2.imshow("Ekran Klavyesi", kare)
+    klavyeyi_ciz(kare, klavye_tuslar, girdi_metin, gezinilen_tus)
+    cv2.imshow("Sanal Klavye", kare)
 
-    # 'q' tuşuna basıldığında çık
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
 cap.release()
