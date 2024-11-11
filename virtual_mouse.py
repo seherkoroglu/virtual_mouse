@@ -26,7 +26,7 @@ opaklik = 0.7
 
 # Mediapipe el takip ayarları
 mp_eller = mp.solutions.hands
-eller = mp_eller.Hands(max_num_hands=1)
+eller = mp_eller.Hands(max_num_hands=2)  # İki eli algılayacak şekilde
 mp_ciz = mp.solutions.drawing_utils
 
 # Pygame ile ses başlat
@@ -44,8 +44,7 @@ cap.set(4, ekran_yukseklik)
 # Tıklama zamanı ve aktif tuşu takip için değişkenler
 son_gezinilen_tus = None
 gezinme_baslangic_zamani = None
-gezinme_suresi_esigi = 2  # Saniye cinsinden tıklama süresi
-
+gezinme_suresi_esigi = 1  # Saniye cinsinden tıklama süresi
 
 def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
     global buton_genislik, buton_yukseklik, opaklik
@@ -81,7 +80,6 @@ def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
     # Opaklık efekti uygulama
     cv2.addWeighted(kaplama, opaklik, resim, 1 - opaklik, 0, resim)
 
-
 # Parmağın belirli bir buton üzerinde olup olmadığını kontrol etme
 def buton_gezinme_kontrol(x, y, tuslar):
     btn_x, btn_y = 50, 100
@@ -100,14 +98,12 @@ def buton_gezinme_kontrol(x, y, tuslar):
 
     return None
 
-
 def dosyaya_kaydet(metin):
     # Kaydedilecek dosya adı
     dosya_adı = "metin_dosyasi.txt"
     with open(dosya_adı, "w") as dosya:
         dosya.write(metin)
     print(f"{dosya_adı} dosyasına kaydedildi.")
-
 
 while True:
     ret, kare = cap.read()
@@ -118,13 +114,34 @@ while True:
     sonuc = eller.process(resim_rgb)
     gezinilen_tus = None
     if sonuc.multi_hand_landmarks:
+        hands_detected = []
         for el_isaretleri in sonuc.multi_hand_landmarks:
             # İşaret parmağı ucunun koordinatlarını al
             parmak_ucu_x = int(el_isaretleri.landmark[mp_eller.HandLandmark.INDEX_FINGER_TIP].x * ekran_genislik)
             parmak_ucu_y = int(el_isaretleri.landmark[mp_eller.HandLandmark.INDEX_FINGER_TIP].y * ekran_yukseklik)
+            hands_detected.append((parmak_ucu_x, parmak_ucu_y))
 
-            # Parmağın üstünde olduğu butonu kontrol et
-            gezinilen_tus = buton_gezinme_kontrol(parmak_ucu_x, parmak_ucu_y, klavye_tuslar)
+        if len(hands_detected) > 0:
+            # İlk ele ait parmak ucu koordinatlarını al
+            parmak_ucu_1_x, parmak_ucu_1_y = hands_detected[0]
+
+            # İkinci ele ait parmak ucu koordinatlarını al (eğer varsa)
+            if len(hands_detected) > 1:
+                parmak_ucu_2_x, parmak_ucu_2_y = hands_detected[1]
+
+                # İki parmak arasında hangi buton daha yakınsa onu seç
+                tus_1 = buton_gezinme_kontrol(parmak_ucu_1_x, parmak_ucu_1_y, klavye_tuslar)
+                tus_2 = buton_gezinme_kontrol(parmak_ucu_2_x, parmak_ucu_2_y, klavye_tuslar)
+
+                if tus_1 and tus_2:
+                    # İlk tespit edilen parmak üzerindeki tuşu al
+                    gezinilen_tus = tus_1 if parmak_ucu_1_y < parmak_ucu_2_y else tus_2
+
+            # Sadece bir el varsa
+            elif len(hands_detected) == 1:
+                tus_1 = buton_gezinme_kontrol(parmak_ucu_1_x, parmak_ucu_1_y, klavye_tuslar)
+                if tus_1:
+                    gezinilen_tus = tus_1
 
             # Tıklama algılama
             if gezinilen_tus:
@@ -144,25 +161,16 @@ while True:
                 else:
                     son_gezinilen_tus = gezinilen_tus
                     gezinme_baslangic_zamani = time.time()  # Yeni tuşa geçildiği için zamanı sıfırla
-            else:
-                son_gezinilen_tus = None
-                gezinme_baslangic_zamani = None
 
-            # İşaret parmağı ucunu çiz
-            cv2.circle(kare, (parmak_ucu_x, parmak_ucu_y), 10, (255, 0, 0), -1)
+            # Klavyeyi ekrana çiz
+            klavyeyi_ciz(kare, klavye_tuslar, girdi_metin, gezinilen_tus)
 
-            # Landmark çizimi
-            mp_ciz.draw_landmarks(kare, el_isaretleri, mp_eller.HAND_CONNECTIONS)
+    # Görüntüyü göster
+    cv2.imshow("Ekran Klavyesi", kare)
 
-    # Klavye ve metin kutusunu çiz
-    klavyeyi_ciz(kare, klavye_tuslar, girdi_metin, gezinilen_tus)
-
-    # Son görüntüyü göster
-    cv2.imshow("Sanal Klavye", kare)
-
+    # 'q' tuşuna basıldığında çık
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Kaynakları serbest bırak
 cap.release()
 cv2.destroyAllWindows()
