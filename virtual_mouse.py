@@ -3,6 +3,7 @@ import numpy as np
 import mediapipe as mp
 import pygame
 import time
+import pywhatkit
 
 # Ekran boyutları
 ekran_genislik = 1280
@@ -45,6 +46,8 @@ cap.set(4, ekran_yukseklik)
 son_gezinilen_tus = None
 gezinme_baslangic_zamani = None
 gezinme_suresi_esigi = 0.5  # Geri alma süresi
+
+
 
 def klavyeyi_ciz(resim, tuslar, girdi_metin, gezinilen_tus=None):
     global buton_genislik, buton_yukseklik, opaklik
@@ -98,6 +101,13 @@ def buton_gezinme_kontrol(x, y, tuslar):
 
     return None
 
+def whatsapp_mesaj_gonder(metin, telefon_numarasi):
+    try:
+        pywhatkit.sendwhatmsg_instantly(telefon_numarasi, metin)
+        print("Mesaj gönderildi.")
+    except Exception as e:
+        print(f"Mesaj gönderilemedi: {e}")
+
 def yumruk_mu(hand_landmarks, resim):
     if len(hand_landmarks.landmark) > 0:
         # Parmak uçlarının noktaları
@@ -121,12 +131,18 @@ def yumruk_mu(hand_landmarks, resim):
             return True
     return False
 
+
 def dosyaya_kaydet(metin):
     # Kaydedilecek dosya adı
     dosya_adı = "metin_dosyasi.txt"
     with open(dosya_adı, "w") as dosya:
         dosya.write(metin)
     print(f"{dosya_adı} dosyasına kaydedildi.")
+
+    # WhatsApp mesaj gönderme işlemi
+    telefon_numarasi = "+905550082126"  # Mesaj gönderilecek telefon numarası
+    whatsapp_mesaj_gonder(metin, telefon_numarasi)
+
 
 while True:
     ret, kare = cap.read()
